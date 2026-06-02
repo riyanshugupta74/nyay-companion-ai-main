@@ -1,0 +1,298 @@
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Scale, LogOut, Search, MessageSquareText, Mail, ArrowLeft, Folder, Heart, Bell, Book, Shield, FileText, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import FindLawyers from "@/components/dashboard/FindLawyers";
+import NyayScan from "@/components/dashboard/NyayScan";
+import NyayMail from "@/components/dashboard/NyayMail";
+import NyayNotice from "@/components/dashboard/NyayNotice";
+import MyCases from "@/components/dashboard/MyCases";
+import SavedLawyers from "@/components/dashboard/SavedLawyers";
+import Notifications from "@/components/dashboard/Notifications";
+import LegalDictionary from "@/components/dashboard/LegalDictionary";
+import PrivacySettings from "@/components/dashboard/PrivacySettings";
+import LawyerChat from "@/components/dashboard/LawyerChat";
+import SiyaaChatbot from "@/components/dashboard/SiyaaChatbot";
+import DashboardSettings from "@/components/dashboard/DashboardSettings";
+import UserProfile from "@/components/dashboard/UserProfile";
+import { DashboardProvider, useDashboard } from "@/contexts/DashboardContext";
+
+type ActiveFeature = "home" | "find" | "nyayscan" | "nyaymail" | "nyaynotice" | "cases" | "saved" | "notifications" | "dictionary" | "privacy" | "chat";
+
+interface ChatState {
+  lawyerId: string;
+  caseType: string;
+  caseId?: string;
+}
+
+interface CaseAnalysis {
+  caseType: string;
+  summary: string;
+  isConsumerCase: boolean;
+  requiresFIR: boolean;
+  prerequisites: string[];
+  recommendations: string[];
+  nextSteps: string[];
+  urgencyLevel: string;
+  estimatedTimeframe: string;
+}
+
+interface NyayScanData {
+  caseDescription: string;
+  analysis: CaseAnalysis | null;
+}
+
+const UserDashboardContent = () => {
+  const navigate = useNavigate();
+  const { t } = useDashboard();
+  
+  const [activeFeature, setActiveFeature] = useState<ActiveFeature>("home");
+  const [prefillCaseType, setPrefillCaseType] = useState<string>("");
+  const [chatState, setChatState] = useState<ChatState | null>(null);
+  const [nyayScanData, setNyayScanData] = useState<NyayScanData | null>(null);
+  const [userName, setUserName] = useState<string>("");
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const checkAuthAndFetchProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        navigate("/");
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, user_type')
+        .eq('id', user.id)
+        .single();
+      
+      // Check if user is authorized to access this dashboard
+      if (profile?.user_type === 'lawyer') {
+        navigate("/lawyer-dashboard");
+        return;
+      }
+
+      setIsAuthorized(true);
+      if (profile?.full_name) {
+        setUserName(profile.full_name);
+      }
+    };
+    checkAuthAndFetchProfile();
+  }, [navigate]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success("Logged out successfully");
+    navigate("/");
+  };
+
+  const mainFeatures = [
+    { id: "find" as const, titleKey: "find_lawyers", descKey: "find_lawyers_desc", icon: Search, color: "text-nyay-gold", bgColor: "bg-nyay-gold/10" },
+    { id: "nyayscan" as const, titleKey: "nyayscan", descKey: "nyayscan_desc", icon: MessageSquareText, color: "text-nyay-teal", bgColor: "bg-nyay-teal/10" },
+    { id: "nyaymail" as const, titleKey: "nyaymail", descKey: "nyaymail_desc", icon: Mail, color: "text-nyay-indigo", bgColor: "bg-nyay-indigo/10" },
+    { id: "nyaynotice" as const, titleKey: "nyaynotice", descKey: "nyaynotice_desc", icon: FileText, color: "text-destructive", bgColor: "bg-destructive/10" },
+  ];
+
+  const userFeatures = [
+    { id: "cases" as const, titleKey: "my_cases", descKey: "my_cases_desc", icon: Folder, color: "text-nyay-indigo", bgColor: "bg-nyay-indigo/10" },
+    { id: "saved" as const, titleKey: "saved_lawyers", descKey: "saved_lawyers_desc", icon: Heart, color: "text-destructive", bgColor: "bg-destructive/10" },
+    { id: "notifications" as const, titleKey: "notifications", descKey: "notifications_desc", icon: Bell, color: "text-nyay-gold", bgColor: "bg-nyay-gold/10" },
+    { id: "dictionary" as const, titleKey: "legal_dictionary", descKey: "legal_dictionary_desc", icon: Book, color: "text-nyay-teal", bgColor: "bg-nyay-teal/10" },
+    { id: "privacy" as const, titleKey: "privacy_settings", descKey: "privacy_settings_desc", icon: Shield, color: "text-muted-foreground", bgColor: "bg-muted" },
+  ];
+
+  const handleFindLawyersFromScan = (caseType: string, caseDescription: string, analysis: CaseAnalysis | null) => {
+    setPrefillCaseType(caseType);
+    setNyayScanData({ caseDescription, analysis });
+    setActiveFeature("find");
+  };
+
+  const handleConnectLawyer = (lawyerId: string, caseType: string, caseId: string) => {
+    setChatState({ lawyerId, caseType, caseId });
+    setActiveFeature("chat");
+  };
+
+  const handleContactFromSaved = (lawyerId: string) => {
+    setChatState({ lawyerId, caseType: '' });
+    setActiveFeature("chat");
+  };
+
+  const handleOpenChatFromCase = (caseId: string, lawyerId: string) => {
+    setChatState({ lawyerId, caseType: '', caseId });
+    setActiveFeature("chat");
+  };
+
+  const renderContent = () => {
+    switch (activeFeature) {
+      case "find": 
+        return (
+          <FindLawyers 
+            prefillCaseType={prefillCaseType} 
+            onClear={() => {
+              setPrefillCaseType("");
+              setNyayScanData(null);
+            }} 
+            onConnectLawyer={handleConnectLawyer}
+            nyayScanData={nyayScanData}
+          />
+        );
+      case "nyayscan": 
+        return <NyayScan onFindLawyers={handleFindLawyersFromScan} />;
+      case "nyaymail": 
+        return <NyayMail />;
+      case "nyaynotice": 
+        return <NyayNotice onFindLawyers={(caseType) => handleFindLawyersFromScan(caseType, '', null)} />;
+      case "cases": 
+        return <MyCases onOpenChat={handleOpenChatFromCase} />;
+      case "saved": 
+        return <SavedLawyers onContactLawyer={handleContactFromSaved} />;
+      case "notifications": 
+        return <Notifications />;
+      case "dictionary": 
+        return <LegalDictionary />;
+      case "privacy": 
+        return <PrivacySettings />;
+      case "chat":
+        if (!chatState) {
+          setActiveFeature("home");
+          return null;
+        }
+        return (
+          <LawyerChat 
+            lawyerId={chatState.lawyerId}
+            caseType={chatState.caseType}
+            onBack={() => {
+              setChatState(null);
+              setActiveFeature("cases");
+            }}
+            userType="user"
+          />
+        );
+      default:
+        return (
+          <>
+            {userName && (
+              <div className="mb-6 flex items-center gap-4">
+                <UserProfile userName={userName} onNameUpdate={setUserName}>
+                  <div className="w-16 h-16 rounded-full bg-gradient-hero flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity">
+                    <User className="w-8 h-8 text-primary-foreground" />
+                  </div>
+                </UserProfile>
+                <div>
+                  <p className="text-sm text-muted-foreground">{t('welcome_back')}</p>
+                  <h1 className="text-4xl md:text-5xl font-display font-semibold text-foreground tracking-tight">
+                    {userName.split(' ')[0]}
+                  </h1>
+                </div>
+              </div>
+            )}
+            <h2 className="text-2xl font-semibold text-foreground mb-2">{t('how_can_we_help')}</h2>
+            <p className="text-muted-foreground mb-8">{t('choose_service')}</p>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {mainFeatures.map((feature) => (
+                <Card key={feature.id} className="cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1" onClick={() => setActiveFeature(feature.id)}>
+                  <CardHeader className="pb-3">
+                    <div className={`w-12 h-12 rounded-xl ${feature.bgColor} flex items-center justify-center mb-3`}>
+                      <feature.icon className={`w-6 h-6 ${feature.color}`} />
+                    </div>
+                    <CardTitle className="text-lg">{t(feature.titleKey)}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">{t(feature.descKey)}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            <h2 className="text-xl font-semibold mb-4">{t('quick_access')}</h2>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {userFeatures.map((feature) => (
+                <Card key={feature.id} className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5" onClick={() => setActiveFeature(feature.id)}>
+                  <CardContent className="p-4 text-center">
+                    <div className={`w-10 h-10 rounded-xl ${feature.bgColor} flex items-center justify-center mx-auto mb-2`}>
+                      <feature.icon className={`w-5 h-5 ${feature.color}`} />
+                    </div>
+                    <p className="font-medium text-sm">{t(feature.titleKey)}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </>
+        );
+    }
+  };
+
+  // Show loading while checking authorization
+  if (isAuthorized === null) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-10 h-10 rounded-xl bg-gradient-hero flex items-center justify-center mx-auto mb-4">
+            <Scale className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/80 backdrop-blur-sm">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {activeFeature !== "home" && (
+              <Button variant="ghost" size="icon-sm" onClick={() => {
+                if (activeFeature === "chat") {
+                  setChatState(null);
+                  setActiveFeature("cases");
+                } else {
+                  setActiveFeature("home");
+                }
+              }}>
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+            )}
+            <div className="w-10 h-10 rounded-xl bg-gradient-hero flex items-center justify-center">
+              <Scale className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <span className="text-xl font-bold">Nyay<span className="text-nyay-gold">Buddy</span></span>
+          </div>
+          <div className="flex items-center gap-2">
+            <DashboardSettings />
+            <Button variant="ghost" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 mr-2" />
+              {t('logout')}
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <div className="container mx-auto px-4 py-8">
+        {renderContent()}
+        <p className="text-xs text-muted-foreground text-center mt-8">
+          {t('disclaimer')}
+        </p>
+      </div>
+
+      {/* Siyaa AI Chatbot */}
+      <SiyaaChatbot />
+    </div>
+  );
+};
+
+const UserDashboard = () => {
+  return (
+    <DashboardProvider>
+      <UserDashboardContent />
+    </DashboardProvider>
+  );
+};
+
+export default UserDashboard;
